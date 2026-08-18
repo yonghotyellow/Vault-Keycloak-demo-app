@@ -1,0 +1,9 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Environment / secrets
+.encrypt.env
+.encryption.key
+.env
+.vault.env

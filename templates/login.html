@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Đăng nhập — Amigo Customer Onboarding</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <h1>Amigo Onboarding Portal</h1>
+      <p class="subtitle"></p>
+
+      {% if error %}
+      <div class="error-banner">{{ error }}</div>
+      {% endif %}
+
+      <form method="POST" action="{{ url_for('login') }}">
+        <div class="field">
+          <label>Tài khoản</label>
+          <input type="text" name="username" placeholder="" required autofocus>
+        </div>
+        <div class="field">
+          <label>Mật khẩu</label>
+          <input id="password" type="password" name="password" placeholder="" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Đăng nhập</button>
+      </form>
+      <div style="text-align:center; margin-top:1rem;">
+        <a class="btn-sso btn-full" href="{{ url_for('login_keycloak') }}">
+          <img src="{{ url_for('static', filename='redhat.png') }}" alt="SSO" />
+          <span>Đăng nhập bằng Keycloak</span>
+        </a>
+      </div>
+    </div>
+  </div>
+  
+</body>
+</html>

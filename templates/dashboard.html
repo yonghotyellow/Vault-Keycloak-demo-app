@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Amigo Customer Portal (Sử dụng Vault)</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span> Amigo Customer Portal (Sử dụng Vault)</div>
+    <div class="user-info">
+      <span>Xin chào, <b>{{ current_user }}</b></span>
+      <a href="{{ url_for('logout') }}">Đăng xuất</a>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="panel">
+      <div class="panel-header">
+        <h2>Danh sách hồ sơ khách hàng</h2>
+
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap: wrap;">
+          <!-- {% if db_error %}
+            <span class="vault-badge error">DB lỗi: {{ db_error }}</span>
+          {% else %}
+            <span class="vault-badge">DB user: <b>{{ db_user }}</b></span>
+            {% if db_password %}
+              <span class="vault-badge">DB pass: <b id="db-password">••••••••</b></span>
+              <button id="password-toggle" class="btn btn-secondary btn-small" type="button" onclick="togglePassword()">Hiện mật khẩu</button>
+            {% endif %}
+          {% endif %} -->
+          {% set groups = groups or [] %}
+          {% if 'create_own' in groups or 'create_view_all' in groups %}
+            <button class="btn btn-primary" onclick="openCreateModal()">+ Thêm khách hàng</button>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Họ tên</th>
+            <th>CMND/CCCD</th>
+            <th>SĐT</th>
+            <th>Email</th>
+            <th>Số TK ngân hàng</th>
+            <th>Thu nhập/tháng</th>
+            <th>Trạng thái</th>
+            <th>Người xử lý</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="customer-table-body">
+          {% for c in customers %}
+          <tr id="row-{{ c.id }}">
+            <td>{{ c.id }}</td>
+            <td>{{ c.full_name }}</td>
+            <td>{{ c.national_id or '-' }}</td>
+            <td>{{ c.phone_number or '-' }}</td>
+            <td>{{ c.email or '-' }}</td>
+            <td>{{ c.bank_account_number or '-' }}</td>
+            <td>{{ '{:,.0f}'.format(c.monthly_income) if c.monthly_income is not none else '-' }}</td>
+            <td><span class="status-pill status-{{ c.application_status }}">{{ c.application_status }}</span></td>
+            <td>{{ c.processed_by or '-' }}</td>
+            <td>
+              {% if 'create_own' in groups or 'create_view_all' in groups %}
+                <button class="icon-btn" onclick="openEditModal('{{ c.id }}')">Sửa</button>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr class="empty-row"><td colspan="10">Chưa có hồ sơ khách hàng nào.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating modal: add / edit customer -->
+  <div class="modal-overlay" id="customer-modal">
+    <div class="modal-box">
+      <h3 id="modal-title">Thêm khách hàng mới</h3>
+      <form id="customer-form">
+        <input type="hidden" id="customer-id" value="">
+        <div class="form-grid">
+          <div class="field full">
+            <label>Họ tên</label>
+            <input type="text" id="full_name" required>
+          </div>
+          <div class="field">
+            <label>CMND/CCCD</label>
+            <input type="text" id="national_id">
+          </div>
+          <div class="field">
+            <label>Số điện thoại</label>
+            <input type="text" id="phone_number">
+          </div>
+          <div class="field full">
+            <label>Email</label>
+            <input type="email" id="email">
+          </div>
+          <div class="field">
+            <label>Số tài khoản ngân hàng</label>
+            <input type="text" id="bank_account_number">
+          </div>
+          <div class="field">
+            <label>Thu nhập/tháng (VNĐ)</label>
+            <input type="number" id="monthly_income" step="1">
+          </div>
+          <div class="field full">
+            <label>Trạng thái hồ sơ</label>
+            <select id="application_status">
+              <option value="Pending">Pending</option>
+              <option value="Approved">Approved</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">Hủy</button>
+          <button type="submit" class="btn btn-primary">Lưu</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const modal = document.getElementById('customer-modal');
+    const form = document.getElementById('customer-form');
+    const modalTitle = document.getElementById('modal-title');
+    const toast = document.getElementById('toast');
+
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2500);
+    }
+
+    const dbUser = {{ db_user|tojson }};
+    const dbPassword = {{ db_password| tojson }};
+    console.log('DB connection info:', { dbUser, dbPassword });
+
+    // Keycloak token (for debugging). This prints the token and id token claims
+    const keycloakToken = {{ keycloak_token|tojson }};
+    // const idTokenClaims = {{ id_token_claims|tojson }};
+    if (keycloakToken) console.log('Keycloak token:', keycloakToken);
+    // if (idTokenClaims) console.log('ID token claims:', idTokenClaims);
+
+    let passwordVisible = false;
+
+    function togglePassword() {
+      passwordVisible = !passwordVisible;
+      const displayText = passwordVisible
+        ? dbPassword
+        : '•'.repeat(Math.max(8, dbPassword.length || 8));
+      document.getElementById('db-password').textContent = displayText;
+      document.getElementById('password-toggle').textContent = passwordVisible
+        ? 'Ẩn mật khẩu'
+        : 'Hiện mật khẩu';
+    }
+
+    function resetForm() {
+      document.getElementById('customer-id').value = '';
+      form.reset();
+    }
+
+    function openCreateModal() {
+      resetForm();
+      modalTitle.textContent = 'Thêm khách hàng mới';
+      modal.classList.add('open');
+    }
+
+    async function openEditModal(id) {
+      const res = await fetch(`/api/customers/${id}`);
+      const data = await res.json();
+      if (!data.ok) { showToast('Không tải được hồ sơ'); return; }
+      const c = data.customer;
+      document.getElementById('customer-id').value = c.id;
+      document.getElementById('full_name').value = c.full_name || '';
+      document.getElementById('national_id').value = c.national_id || '';
+      document.getElementById('phone_number').value = c.phone_number || '';
+      document.getElementById('email').value = c.email || '';
+      document.getElementById('bank_account_number').value = c.bank_account_number || '';
+      document.getElementById('monthly_income').value = c.monthly_income || '';
+      document.getElementById('application_status').value = c.application_status || 'Pending';
+      modalTitle.textContent = `Sửa hồ sơ #${c.id}`;
+      modal.classList.add('open');
+    }
+
+    function closeModal() {
+      modal.classList.remove('open');
+    }
+
+    window.openCreateModal = openCreateModal;
+    window.openEditModal = openEditModal;
+    window.closeModal = closeModal;
+
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+
+    function statusClass(s) {
+      return `status-${s}`;
+    }
+
+    function renderRow(c) {
+      return `<tr id="row-${c.id}">
+        <td>${c.id}</td>
+        <td>${c.full_name ?? ''}</td>
+        <td>${c.national_id ?? '-'}</td>
+        <td>${c.phone_number ?? '-'}</td>
+        <td>${c.email ?? '-'}</td>
+        <td>${c.bank_account_number ?? '-'}</td>
+        <td>${c.monthly_income != null ? Number(c.monthly_income).toLocaleString() : '-'}</td>
+        <td><span class="status-pill ${statusClass(c.application_status)}">${c.application_status}</span></td>
+        <td>${c.processed_by ?? '-'}</td>
+        <td><button class="icon-btn" onclick="openEditModal(${c.id})">Sửa</button></td>
+      </tr>`;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('customer-id').value;
+      const payload = {
+        full_name: document.getElementById('full_name').value,
+        national_id: document.getElementById('national_id').value,
+        phone_number: document.getElementById('phone_number').value,
+        email: document.getElementById('email').value,
+        bank_account_number: document.getElementById('bank_account_number').value,
+        monthly_income: document.getElementById('monthly_income').value || null,
+        application_status: document.getElementById('application_status').value,
+      };
+
+      const url = id ? `/api/customers/${id}` : '/api/customers';
+      const method = id ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      let data;
+      let textBody = '';
+      try {
+        textBody = await res.text();
+        data = textBody ? JSON.parse(textBody) : {};
+      } catch (err) {
+        console.error('API response was not valid JSON:', textBody);
+        showToast('Máy chủ trả về lỗi, vui lòng thử lại.');
+        return;
+      }
+
+      if (!data.ok) {
+        showToast(data.error || 'Có lỗi xảy ra, thử lại.');
+        return;
+      }
+
+      const tbody = document.getElementById('customer-table-body');
+      const emptyRow = tbody.querySelector('.empty-row');
+      if (emptyRow) emptyRow.remove();
+
+      const existingRow = document.getElementById(`row-${data.customer.id}`);
+      const rowHtml = renderRow(data.customer);
+      if (existingRow) {
+        existingRow.outerHTML = rowHtml;
+      } else {
+        tbody.insertAdjacentHTML('afterbegin', rowHtml);
+      }
+
+      showToast(id ? 'Đã cập nhật hồ sơ' : 'Đã thêm hồ sơ mới');
+      closeModal();
+    });
+  </script>
+
+</body>
+</html>
