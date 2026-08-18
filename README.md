@@ -50,7 +50,6 @@ sequenceDiagram
   Browser->>Keycloak: redirect to authenticate
   Keycloak-->>Browser: return token/userinfo
   Browser->>App: callback (/auth/callback)
-  <!-- App->>Keycloak: token/userinfo -->
   App-->>Browser: session cookie set
   Browser->>App: POST /api/customers
   App->>Vault: AppRole login -> read DB creds
