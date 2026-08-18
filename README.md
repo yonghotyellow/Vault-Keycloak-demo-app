@@ -48,14 +48,14 @@ sequenceDiagram
 
   Browser->>App: GET /login
   Browser->>Keycloak: redirect to authenticate
-  Keycloak-->>Browser: redirects with code
+  Keycloak-->>Browser: return token/userinfo
   Browser->>App: callback (/auth/callback)
-  App->>Keycloak: token/userinfo
+  <!-- App->>Keycloak: token/userinfo -->
   App-->>Browser: session cookie set
-  Browser->>App: POST /api/customers (create)
+  Browser->>App: POST /api/customers
   App->>Vault: AppRole login -> read DB creds
   Vault-->>App: DB username/password
-  App->>Postgres: SQL (INSERT)
+  App->>Postgres: SQL Querry
   Postgres-->>App: OK
   App-->>Browser: 200 {customer}
 ```
@@ -65,27 +65,40 @@ sequenceDiagram
 The demo expects three groups in Keycloak (realm `vault-db-demo` by default):
 
 - `view_all` — can view all customer records but cannot create or update.
-- `create_own` — can create customers and view/update only customers they processed (ownership tracked in `processed_by`).
+- `create_own` — can create customers and view/update only customers they processed.
 - `create_view_all` — can create and view/update all customers.
 
 Keycloak must include group membership in ID token or userinfo. Add a "Group Membership" mapper on the client (or client-scope) with claim name `groups` and enable it for ID token and userinfo.
 
-## Environment / quick run
+## Environment files
 
-Copy the included `.env` template and fill secrets:
+This project uses four environment/config files (kept out of git):
 
-- `KEYCLOAK_BASE`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`
-- Vault variables: `VAULT_ADDR`, `VAULT_ROLE_ID`, `VAULT_SECRET_ID`, `STATIC_ROLE_PATH` (if using Vault)
-- DB variables: `DB_HOST`, `DB_PORT`, `DB_NAME`, and either `DB_CONNECTION_METHOD=plain` with `DB_USER`/`DB_PASSWORD`, or `DB_CONNECTION_METHOD=vault`.
+- `.env` — primary application settings. Store DB connection defaults (when `DB_CONNECTION_METHOD=plain`), Keycloak OIDC client settings, and other app flags. Typical values:
+  - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_CONNECTION_METHOD` (`plain` or `vault`), `DB_USER`, `DB_PASSWORD`
+  - `KEYCLOAK_BASE`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID`, `KEYCLOAK_CLIENT_SECRET`, `KEYCLOAK_SKIP_VERIFY`
 
-Install and run:
+- `.encrypt.env` — encryption-related configuration. Keeps settings that determine encryption mode used by the app (e.g. `ENCRYPT_MODE=fernet|transit|None`) and any per-mode parameters consumed by the encryption utilities.
+
+- `.encryption.key` — optional file used by the encryption utilities (for example a local Fernet key or transit configuration placeholder). If using `transit` mode and local testing, store the key material here; in production the app should rely on Vault transit.
+
+- `.vault.env` — Vault connection settings used by `vault_client.py` (this file is loaded by the Vault client helper). Typical variables:
+  - `VAULT_ADDR`, `VAULT_ROLE_ID`, `VAULT_SECRET_ID`, `STATIC_ROLE_PATH`, `VAULT_SKIP_VERIFY`
+
+Place these files in the project root. The app contains a small loader that reads `.env` and `.vault.env` if present — values set in the process environment take precedence.
+
+## Quick run
+
+1. Copy the provided `.env` template and populate secrets for your environment (Keycloak, DB, Vault as needed).
+
+2. Install dependencies and start the app:
 
 ```bash
 pip install -r requirements.txt
 python app.py
 ```
 
-Then open `http://localhost:8002/login`.
+3. Open `http://localhost:8002/login` in your browser.
 
 ## Troubleshooting
 
