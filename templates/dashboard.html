@@ -2,13 +2,13 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <title>Amigo Customer Portal (Sử dụng Vault)</title>
+  <title>{{ portal_title or 'Amigo Customer Portal (Sử dụng Vault)' }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
   <div class="topbar">
-    <div class="brand"><span class="dot"></span> Amigo Customer Portal (Sử dụng Vault)</div>
+    <div class="brand"><span class="dot"></span> {{ portal_title or 'Amigo Customer Portal (Sử dụng Vault)' }}</div>
     <div class="user-info">
       <span>Xin chào, <b>{{ current_user }}</b></span>
       <a href="{{ url_for('logout') }}">Đăng xuất</a>
@@ -31,7 +31,7 @@
             {% endif %}
           {% endif %} -->
           {% set groups = groups or [] %}
-          {% if 'create_own' in groups or 'create_view_all' in groups %}
+          {% if unrestricted or 'create_own' in groups or 'create_view_all' in groups %}
             <button class="btn btn-primary" onclick="openCreateModal()">+ Thêm khách hàng</button>
           {% endif %}
         </div>
@@ -66,7 +66,7 @@
             <td><span class="status-pill status-{{ c.application_status }}">{{ c.application_status }}</span></td>
             <td>{{ c.processed_by or '-' }}</td>
             <td>
-              {% if 'create_own' in groups or 'create_view_all' in groups %}
+              {% if unrestricted or 'create_own' in groups or 'create_view_all' in groups %}
                 <button class="icon-btn" onclick="openEditModal('{{ c.id }}')">Sửa</button>
               {% endif %}
             </td>

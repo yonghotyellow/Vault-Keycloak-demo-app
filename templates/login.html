@@ -2,13 +2,13 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <title>Đăng nhập — Amigo Customer Onboarding</title>
+  <title>Đăng nhập — {{ portal_title or 'Amigo Customer Onboarding' }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <div class="login-wrap">
     <div class="login-card">
-      <h1>Amigo Onboarding Portal</h1>
+      <h1>{{ portal_title or 'Amigo Onboarding Portal' }}</h1>
       <p class="subtitle"></p>
 
       {% if error %}

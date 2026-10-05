@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#174d3c">
+  <title>{{ portal_title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app2.css') }}">
+</head>
+<body class="board-page">
+  <header class="board-topbar">
+    <a class="board-brand" href="{{ url_for('dashboard') }}"><span class="wordmark-icon">D</span> DAYMARK</a>
+    <div class="board-account"><span class="account-name">{{ current_user }}</span><a href="{{ url_for('logout') }}">Sign out <span aria-hidden="true">↗</span></a></div>
+  </header>
+
+  <main class="board-main">
+    <section class="board-heading">
+      <div>
+        <p class="eyebrow board-eyebrow">YOUR PERSONAL WORKBOARD</p>
+        <h1>Good work starts<br>with <em>one thing.</em></h1>
+      </div>
+      <div class="task-count"><strong>{{ tasks|rejectattr('completed')|list|length }}</strong><span>open<br>tasks</span></div>
+    </section>
+
+    <form class="task-composer" id="task-form">
+      <label class="sr-only" for="task-title">Task name</label>
+      <input id="task-title" name="title" type="text" maxlength="160" placeholder="What needs your attention?" required>
+      <label class="sr-only" for="task-date">Due date</label>
+      <input id="task-date" name="due_date" type="date" aria-label="Due date">
+      <label class="sr-only" for="task-priority">Priority</label>
+      <select id="task-priority" name="priority" aria-label="Priority">
+        <option value="medium">Normal</option>
+        <option value="high">High priority</option>
+        <option value="low">Low priority</option>
+      </select>
+      <button type="submit" class="add-task-button"><span aria-hidden="true">+</span> Add task</button>
+      <label class="sr-only" for="task-notes">Notes</label>
+      <input id="task-notes" name="notes" type="text" maxlength="1000" placeholder="Add a note (optional)">
+    </form>
+
+    <div class="list-toolbar">
+      <div class="list-title"><h2>Your list</h2><span>{{ tasks|length }} total</span></div>
+      <div class="filter-tabs" role="group" aria-label="Filter tasks">
+        <button type="button" class="filter-tab is-active" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" class="filter-tab" data-filter="open" aria-pressed="false">To do</button>
+        <button type="button" class="filter-tab" data-filter="done" aria-pressed="false">Done</button>
+      </div>
+    </div>
+
+    <ul class="task-list" id="task-list">
+      {% for task in tasks %}
+      <li class="task-row{% if task.completed %} is-complete{% endif %}" data-completed="{{ 'true' if task.completed else 'false' }}">
+        <label class="task-check" title="{{ 'Mark as to do' if task.completed else 'Mark as complete' }}">
+          <input type="checkbox" data-task-id="{{ task.id }}" {% if task.completed %}checked{% endif %} aria-label="Mark {{ task.title }} as {{ 'to do' if task.completed else 'complete' }}">
+          <span aria-hidden="true"></span>
+        </label>
+        <div class="task-copy">
+          <p class="task-name">{{ task.title }}</p>
+          {% if task.notes %}<p class="task-note">{{ task.notes }}</p>{% endif %}
+        </div>
+        <div class="task-meta">
+          {% if task.due_date %}<time class="task-date" datetime="{{ task.due_date }}">{{ task.due_date }}</time>{% endif %}
+          <span class="priority priority-{{ task.priority }}">{{ task.priority }}</span>
+        </div>
+        <button type="button" class="delete-task" data-delete-id="{{ task.id }}" aria-label="Delete {{ task.title }}" title="Delete task">×</button>
+      </li>
+      {% else %}
+      <li class="empty-state" id="empty-state"><span class="empty-mark" aria-hidden="true">✳</span><p>Your list is clear.</p><span>Add a task above when something comes to mind.</span></li>
+      {% endfor %}
+    </ul>
+    <p class="board-message" id="board-message" role="status" aria-live="polite"></p>
+  </main>
+
+  <script>
+    const taskForm = document.getElementById('task-form');
+    const boardMessage = document.getElementById('board-message');
+
+    async function sendTaskRequest(url, method, body) {
+      const response = await fetch(url, {
+        method,
+        headers: body ? { 'Content-Type': 'application/json' } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || 'Something went wrong.');
+      return result;
+    }
+
+    taskForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const values = new FormData(taskForm);
+      const button = taskForm.querySelector('button');
+      button.disabled = true;
+      try {
+        await sendTaskRequest('/api/tasks', 'POST', Object.fromEntries(values));
+        window.location.reload();
+      } catch (error) {
+        boardMessage.textContent = error.message;
+        button.disabled = false;
+      }
+    });
+
+    document.querySelectorAll('[data-task-id]').forEach((checkbox) => {
+      checkbox.addEventListener('change', async () => {
+        try {
+          await sendTaskRequest(`/api/tasks/${checkbox.dataset.taskId}`, 'PATCH', { completed: checkbox.checked });
+          window.location.reload();
+        } catch (error) {
+          checkbox.checked = !checkbox.checked;
+          boardMessage.textContent = error.message;
+        }
+      });
+    });
+
+    document.querySelectorAll('[data-delete-id]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        try {
+          await sendTaskRequest(`/api/tasks/${button.dataset.deleteId}`, 'DELETE');
+          window.location.reload();
+        } catch (error) {
+          boardMessage.textContent = error.message;
+        }
+      });
+    });
+
+    document.querySelectorAll('[data-filter]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const filter = button.dataset.filter;
+        document.querySelectorAll('[data-filter]').forEach((tab) => {
+          const selected = tab === button;
+          tab.classList.toggle('is-active', selected);
+          tab.setAttribute('aria-pressed', String(selected));
+        });
+        document.querySelectorAll('.task-row').forEach((row) => {
+          const completed = row.dataset.completed === 'true';
+          row.hidden = filter === 'open' ? completed : filter === 'done' ? !completed : false;
+        });
+      });
+    });
+  </script>
+</body>
+</html>
