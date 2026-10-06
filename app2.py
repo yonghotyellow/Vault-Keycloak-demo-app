@@ -13,6 +13,7 @@ import urllib3
 
 app = Flask(__name__)
 app.secret_key = os.getenv("APP2_SECRET_KEY", "dev-secret-change-me-app2")
+app.config["SESSION_COOKIE_NAME"] = "vault_db_app2_session"
 
 ENV_PATH = Path(__file__).resolve().parent / ".env"
 

@@ -11,8 +11,8 @@ Small Flask demo showing customer onboarding with Vault-backed DB credentials an
 
 ## Key components
 
-- `app.py` — Flask app, login endpoints (local fallback + Keycloak OIDC), RBAC enforcement, web routes.
-- `app2.py` — Daymark task board; local fallback credentials are constants in the file.
+- `app.py` — Flask app, RBAC enforcement, web routes.
+- `app2.py` — Test app for SSO demo
 - `db.py` — DB access layer. Uses `vault_client.get_db_credentials()` when `DB_CONNECTION_METHOD=vault` (default in template) or plain creds from `.env`.
 - `vault_client.py` — AppRole login to Vault; reads static DB role path to obtain username/password for DB connections.
 - `templates/` — UI for both apps, including the Daymark task board.
@@ -108,7 +108,9 @@ For a single-sign-on demo across both apps, use the same Keycloak realm but crea
 ## Troubleshooting
 
 - If Keycloak token has no `groups` claim, add a Group Membership mapper to the client and re-login users.
-- For TLS errors to Keycloak, either fix the certificate chain or set `KEYCLOAK_SKIP_VERIFY=true` in env (dev only). For DNS/connectivity issues, ensure `KEYCLOAK_BASE` is reachable from the app host.
+- For TLS errors to Keycloak, either fix the cer
+
+Certificate chain or set `KEYCLOAK_SKIP_VERIFY=true` in env (dev only). For DNS/connectivity issues, ensure `KEYCLOAK_BASE` is reachable from the app host.
 - Session cookie size: storing the whole token in session can grow cookie size; if you hit cookie size issues, switch to storing only minimal claims or keep the debug token out of session.
 
 ## Tests
