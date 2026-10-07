@@ -5,7 +5,7 @@ Small Flask demo showing customer onboarding with Vault-backed DB credentials an
 ## Overview
 
 - Web app: Flask (`app.py`) — serves UI and JSON APIs for customer records.
-- Training catalog: Flask (`app2.py`) — the Amigo Training Portal course list with optional Keycloak SSO.
+- Training catalog: Flask (`app2.py`) — the Amigo Training Portal course list, authenticated with Keycloak.
 - Data plane: the application connects to Postgres to read/write customer records. DB credentials can be fetched from HashiCorp Vault on every connection (AppRole -> read static role).
 - Management plane: Vault (credential provider) and Keycloak (identity provider). Administrators manage AppRole secrets and database roles in Vault, and create users/groups/clients in Keycloak.
 
@@ -30,8 +30,8 @@ Small Flask demo showing customer onboarding with Vault-backed DB credentials an
 
 ## Request flow
 
-1. User visits `/login` and chooses local login or SSO (`/login/keycloak`).
-2. For SSO: app redirects to Keycloak; user authenticates; Keycloak redirects back to `/auth/callback` with token.
+1. User visits `/login`; the app automatically redirects to Keycloak (`/login/keycloak`).
+2. Keycloak uses its existing realm session when available, then redirects back to `/auth/callback` with a token. If there is no active Keycloak session, the user signs in there first.
 3. App obtains token and userinfo (or ID token claims), extracts username and group membership, and stores session info.
 4. When the app needs DB access, `db.get_connection()` uses `vault_client.get_db_credentials()` (if `DB_CONNECTION_METHOD=vault`) which:
    - Calls Vault AppRole login (AppRole ROLE_ID + SECRET_ID) to get Vault token.
@@ -101,9 +101,9 @@ python app.py
 
 3. Open `http://localhost:8002/login` in your browser.
 
-To run the Amigo Training Portal, start `python app2.py` and open `http://localhost:8003/login`. After signing in, app2 displays its Red Hat training course list. Its local fallback username and password are defined by `APP_USER` and `APP_PASS` in `app2.py`; replace those demo values before use. For Keycloak setup, see the SSO notes below.
+To run the Amigo Training Portal, start `python app2.py` and open `http://localhost:8003/login`. After signing in with Keycloak, app2 displays its Red Hat training course list. For Keycloak setup, see the SSO notes below.
 
-For a single-sign-on demo across both apps, use the same Keycloak realm but create a separate OIDC client for each app. Keep the realm/base URL shared, configure `KEYCLOAK_CLIENT_ID` and `KEYCLOAK_CLIENT_SECRET` for `app.py`, and set `APP2_KEYCLOAK_CLIENT_ID=demo-app2` and `APP2_KEYCLOAK_CLIENT_SECRET` for `app2.py`. App2 defaults to the `demo-app2` client ID and does not reuse app.py's client secret. Register `http://localhost:8002/auth/callback` as the valid redirect URI for the app.py client and `http://localhost:8003/auth/callback` for the app2 client. Both clients should use OIDC standard flow and be confidential server-side clients. Sign in to one app, then use Keycloak sign-in in the other without ending the Keycloak session; the existing realm SSO session should authenticate the second app without another password prompt.
+For a single-sign-on demo across both apps, use the same Keycloak realm but create a separate OIDC client for each app. Keep the realm/base URL shared, configure `KEYCLOAK_CLIENT_ID` and `KEYCLOAK_CLIENT_SECRET` for `app.py`, and set `APP2_KEYCLOAK_CLIENT_ID=demo-app2` and `APP2_KEYCLOAK_CLIENT_SECRET` for `app2.py`. App2 defaults to the `demo-app2` client ID and does not reuse app.py's client secret. Register `http://localhost:8002/auth/callback` as the valid redirect URI for the app.py client and `http://localhost:8003/auth/callback` for the app2 client. Both clients should use OIDC standard flow and be confidential server-side clients. Once one app has established a Keycloak session in the browser, opening or reloading the other app automatically redirects through Keycloak and signs in the same user without another click or password prompt.
 
 ## Troubleshooting
 
@@ -117,7 +117,7 @@ Certificate chain or set `KEYCLOAK_SKIP_VERIFY=true` in env (dev only). For DNS/
 
 This repo does not include automated tests yet. Basic manual checks:
 
-- Local login with `APP_USER`/`APP_PASS` should give `create_view_all` privileges (used for local testing).
+- Sign in through Keycloak and assign users to the groups required by the RBAC model.
 - Create users in Keycloak and assign them to groups; verify UI and API behavior.
 
 ---

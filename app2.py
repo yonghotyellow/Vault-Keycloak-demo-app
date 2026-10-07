@@ -4,7 +4,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from authlib.integrations.flask_client import OAuth
-from flask import Flask, abort, redirect, render_template, request, session, url_for
+from flask import Flask, abort, redirect, render_template, session, url_for
 import requests
 import urllib3
 
@@ -33,10 +33,6 @@ def _load_env_file():
 
 _load_env_file()
 
-# Local fallback credentials. Replace these before exposing this app.
-APP_USER = "hieutq"
-APP_PASS = "1"
-
 COURSES = [
     {"code": "RH124", "title": "Red Hat System Administration I"},
     {"code": "RH134", "title": "Red Hat System Administration II"},
@@ -59,10 +55,13 @@ KEYCLOAK_CLIENT_SECRET = os.getenv("APP2_KEYCLOAK_CLIENT_SECRET")
 KEYCLOAK_SKIP_VERIFY = os.getenv("KEYCLOAK_SKIP_VERIFY", "false").lower() in (
     "1", "true", "yes"
 )
+KEYCLOAK_ENABLED = all(
+    (KEYCLOAK_BASE, KEYCLOAK_REALM, KEYCLOAK_CLIENT_ID, KEYCLOAK_CLIENT_SECRET)
+)
 
 oauth = OAuth(app)
 server_metadata = {}
-if all((KEYCLOAK_BASE, KEYCLOAK_REALM, KEYCLOAK_CLIENT_ID, KEYCLOAK_CLIENT_SECRET)):
+if KEYCLOAK_ENABLED:
     metadata_url = (
         f"{KEYCLOAK_BASE.rstrip('/')}/realms/{KEYCLOAK_REALM}/"
         ".well-known/openid-configuration"
@@ -103,35 +102,22 @@ def login_required(view):
     return wrapped
 
 
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login")
 def login():
-    if request.method == "POST":
-        username = request.form.get("username", "")
-        password = request.form.get("password", "")
-        if username == APP_USER and password == APP_PASS:
-            session.clear()
-            session["logged_in"] = True
-            session["user"] = username
-            return redirect(url_for("dashboard"))
-        return render_template(
-            "app2_login.html",
-            error="Sai tài khoản hoặc mật khẩu",
-            portal_title="Amigo Training Portal",
-            keycloak_enabled=bool(KEYCLOAK_CLIENT_ID and KEYCLOAK_CLIENT_SECRET),
-        )
     if session.get("logged_in"):
         return redirect(url_for("dashboard"))
+    if KEYCLOAK_ENABLED:
+        return redirect(url_for("login_keycloak"))
     return render_template(
         "app2_login.html",
-        error=None,
         portal_title="Amigo Training Portal",
-        keycloak_enabled=bool(KEYCLOAK_CLIENT_ID and KEYCLOAK_CLIENT_SECRET),
+        keycloak_enabled=KEYCLOAK_ENABLED,
     )
 
 
 @app.route("/login/keycloak")
 def login_keycloak():
-    if not oauth.keycloak:
+    if not KEYCLOAK_ENABLED:
         abort(500, description="Keycloak is not configured")
     redirect_uri = url_for("auth_callback", _external=True)
     return oauth.keycloak.authorize_redirect(redirect_uri)

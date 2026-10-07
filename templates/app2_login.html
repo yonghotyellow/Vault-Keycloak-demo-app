@@ -14,22 +14,6 @@
       <h1>{{ portal_title }}</h1>
       <p class="subtitle"></p>
 
-      {% if error %}
-      <div class="error-banner" role="alert">{{ error }}</div>
-      {% endif %}
-
-      <form method="POST" action="{{ url_for('login') }}">
-        <div class="field">
-          <label for="username">Tài khoản</label>
-          <input id="username" type="text" name="username" autocomplete="username" required autofocus>
-        </div>
-        <div class="field">
-          <label for="password">Mật khẩu</label>
-          <input id="password" type="password" name="password" autocomplete="current-password" required>
-        </div>
-        <button type="submit" class="btn btn-primary btn-full">Đăng nhập</button>
-      </form>
-
       {% if keycloak_enabled %}
       <div class="app2-keycloak">
         <a class="btn-sso btn-full" href="{{ url_for('login_keycloak') }}">
@@ -37,6 +21,8 @@
           <span>Đăng nhập bằng Keycloak</span>
         </a>
       </div>
+      {% else %}
+      <div class="error-banner" role="alert">Keycloak chưa được cấu hình.</div>
       {% endif %}
     </div>
   </div>

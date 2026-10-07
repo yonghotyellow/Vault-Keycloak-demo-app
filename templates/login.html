@@ -11,27 +11,16 @@
       <h1>{{ portal_title or 'Amigo Onboarding Portal' }}</h1>
       <p class="subtitle"></p>
 
-      {% if error %}
-      <div class="error-banner">{{ error }}</div>
-      {% endif %}
-
-      <form method="POST" action="{{ url_for('login') }}">
-        <div class="field">
-          <label>Tài khoản</label>
-          <input type="text" name="username" placeholder="" required autofocus>
-        </div>
-        <div class="field">
-          <label>Mật khẩu</label>
-          <input id="password" type="password" name="password" placeholder="" required>
-        </div>
-        <button type="submit" class="btn btn-primary btn-full">Đăng nhập</button>
-      </form>
+      {% if keycloak_enabled %}
       <div style="text-align:center; margin-top:1rem;">
         <a class="btn-sso btn-full" href="{{ url_for('login_keycloak') }}">
           <img src="{{ url_for('static', filename='redhat.png') }}" alt="SSO" />
           <span>Đăng nhập bằng Keycloak</span>
         </a>
       </div>
+      {% else %}
+      <div class="error-banner" role="alert">Keycloak chưa được cấu hình.</div>
+      {% endif %}
     </div>
   </div>
   

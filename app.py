@@ -38,18 +38,18 @@ def _load_env_file():
 
 _load_env_file()
 
-# Local fallback credentials (kept for demo/testing)
-APP_USER = "hieutq"
-APP_PASS = "1"
-
 # Keycloak / OIDC configuration
 KEYCLOAK_BASE = os.getenv("KEYCLOAK_BASE")
 KEYCLOAK_REALM = os.getenv("KEYCLOAK_REALM")
 KEYCLOAK_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID")
 KEYCLOAK_CLIENT_SECRET = os.getenv("KEYCLOAK_CLIENT_SECRET")
 KEYCLOAK_SKIP_VERIFY = os.getenv("KEYCLOAK_SKIP_VERIFY", "false").lower() in ("1", "true", "yes")
+KEYCLOAK_ENABLED = all(
+    (KEYCLOAK_BASE, KEYCLOAK_REALM, KEYCLOAK_CLIENT_ID, KEYCLOAK_CLIENT_SECRET)
+)
 oauth = OAuth(app)
-if KEYCLOAK_CLIENT_ID and KEYCLOAK_CLIENT_SECRET:
+server_metadata = {}
+if KEYCLOAK_ENABLED:
     # If skipping TLS verification, fetch metadata manually with verify=False
     if KEYCLOAK_SKIP_VERIFY:
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -105,26 +105,18 @@ def requires_group(*allowed_groups):
     return decorator
 
 
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login")
 def login():
-    if request.method == "POST":
-        username = request.form.get("username", "")
-        password = request.form.get("password", "")
-        if username == APP_USER and password == APP_PASS:
-            session["logged_in"] = True
-            session["user"] = username
-            # grant local fallback user full create/view rights for testing
-            session["groups"] = ["create_view_all"]
-            return redirect(url_for("dashboard"))
-        return render_template("login.html", error="Sai tài khoản hoặc mật khẩu")
     if session.get("logged_in"):
         return redirect(url_for("dashboard"))
-    return render_template("login.html", error=None)
+    if KEYCLOAK_ENABLED:
+        return redirect(url_for("login_keycloak"))
+    return render_template("login.html", keycloak_enabled=KEYCLOAK_ENABLED)
 
 
 @app.route("/login/keycloak")
 def login_keycloak():
-    if not KEYCLOAK_CLIENT_ID or not KEYCLOAK_CLIENT_SECRET:
+    if not KEYCLOAK_ENABLED:
         return "Keycloak not configured", 500
     redirect_uri = url_for("auth_callback", _external=True)
     return oauth.keycloak.authorize_redirect(redirect_uri)
