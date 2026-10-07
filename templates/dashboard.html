@@ -2,13 +2,13 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <title>{{ portal_title or 'Amigo Customer Portal (Sử dụng Vault)' }}</title>
+  <title>{{ portal_title or 'Amigo Customer Portal ' }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
   <div class="topbar">
-    <div class="brand"><span class="dot"></span> {{ portal_title or 'Amigo Customer Portal (Sử dụng Vault)' }}</div>
+    <div class="brand"><span class="dot"></span> {{ portal_title or 'Amigo Customer Portal ' }}</div>
     <div class="user-info">
       <span>Xin chào, <b>{{ current_user }}</b></span>
       <a href="{{ url_for('logout') }}">Đăng xuất</a>

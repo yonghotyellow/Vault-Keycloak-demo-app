@@ -5,36 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#174d3c">
   <title>Đăng nhập — {{ portal_title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app2.css') }}">
 </head>
-<body class="login-page">
-  <main class="login-page-main">
-    <div class="login-options">
-      <section class="login-box" aria-labelledby="login-title">
-        <a class="wordmark" href="{{ url_for('login') }}"><span class="wordmark-icon">D</span> DAYMARK</a>
-        <h1 id="login-title">Đăng nhập</h1>
+<body class="app2-login">
+  <div class="login-wrap">
+    <div class="login-card">
+      <h1>{{ portal_title }}</h1>
+      <p class="subtitle"></p>
 
-        {% if error %}
-        <div class="login-error" role="alert">{{ error }}</div>
-        {% endif %}
+      {% if error %}
+      <div class="error-banner" role="alert">{{ error }}</div>
+      {% endif %}
 
-        <form method="POST" action="{{ url_for('login') }}">
-          <div class="login-field">
-            <label for="username">Tài khoản</label>
-            <input id="username" type="text" name="username" autocomplete="username" required autofocus>
-          </div>
-          <div class="login-field">
-            <label for="password">Mật khẩu</label>
-            <input id="password" type="password" name="password" autocomplete="current-password" required>
-          </div>
-          <button class="login-submit" type="submit">Đăng nhập</button>
-        </form>
-      </section>
+      <form method="POST" action="{{ url_for('login') }}">
+        <div class="field">
+          <label for="username">Tài khoản</label>
+          <input id="username" type="text" name="username" autocomplete="username" required autofocus>
+        </div>
+        <div class="field">
+          <label for="password">Mật khẩu</label>
+          <input id="password" type="password" name="password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full">Đăng nhập</button>
+      </form>
 
       {% if keycloak_enabled %}
-      <a class="keycloak-box" href="{{ url_for('login_keycloak') }}">Login with Keycloak <span aria-hidden="true">→</span></a>
+      <div class="app2-keycloak">
+        <a class="btn-sso btn-full" href="{{ url_for('login_keycloak') }}">
+          <img src="{{ url_for('static', filename='redhat.png') }}" alt="SSO">
+          <span>Đăng nhập bằng Keycloak</span>
+        </a>
+      </div>
       {% endif %}
     </div>
-  </main>
+  </div>
 </body>
 </html>

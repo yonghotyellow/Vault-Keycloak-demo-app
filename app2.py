@@ -1,13 +1,10 @@
 from functools import wraps
-from datetime import date, datetime, timezone
-import json
 import os
 from pathlib import Path
-import threading
 from urllib.parse import urlencode
 
 from authlib.integrations.flask_client import OAuth
-from flask import Flask, abort, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, abort, redirect, render_template, request, session, url_for
 import requests
 import urllib3
 
@@ -36,15 +33,24 @@ def _load_env_file():
 
 _load_env_file()
 
-TASKS_FILE = Path(os.getenv(
-    "APP2_TASKS_FILE",
-    str(Path(__file__).resolve().parent / "instance" / "app2-tasks.json"),
-)).resolve()
-TASKS_LOCK = threading.Lock()
-
 # Local fallback credentials. Replace these before exposing this app.
 APP_USER = "hieutq"
 APP_PASS = "1"
+
+COURSES = [
+    {"code": "RH124", "title": "Red Hat System Administration I"},
+    {"code": "RH134", "title": "Red Hat System Administration II"},
+    {"code": "RH199", "title": "RHCSA Rapid Track Course"},
+    {"code": "RH294", "title": "Red Hat Enterprise Linux Automation with Ansible"},
+    {"code": "RH342", "title": "Red Hat Enterprise Linux Diagnostics and Troubleshooting"},
+    {"code": "RH358", "title": "Red Hat Services Management and Automation"},
+    {"code": "RH415", "title": "Red Hat Security: Linux in Physical, Virtual, and Cloud"},
+    {"code": "DO180", "title": "Red Hat OpenShift Administration I"},
+    {"code": "DO188", "title": "Introduction to Containers with Podman"},
+    {"code": "DO280", "title": "Red Hat OpenShift Administration II"},
+    {"code": "RH436", "title": "Red Hat Enterprise Linux High Availability Clustering"},
+    {"code": "DO380", "title": "Red Hat OpenShift Administration III"},
+]
 
 KEYCLOAK_BASE = os.getenv("KEYCLOAK_BASE")
 KEYCLOAK_REALM = os.getenv("KEYCLOAK_REALM")
@@ -110,7 +116,7 @@ def login():
         return render_template(
             "app2_login.html",
             error="Sai tài khoản hoặc mật khẩu",
-            portal_title="Daymark Workboard",
+            portal_title="Amigo Training Portal",
             keycloak_enabled=bool(KEYCLOAK_CLIENT_ID and KEYCLOAK_CLIENT_SECRET),
         )
     if session.get("logged_in"):
@@ -118,7 +124,7 @@ def login():
     return render_template(
         "app2_login.html",
         error=None,
-        portal_title="Daymark Workboard",
+        portal_title="Amigo Training Portal",
         keycloak_enabled=bool(KEYCLOAK_CLIENT_ID and KEYCLOAK_CLIENT_SECRET),
     )
 
@@ -172,121 +178,10 @@ def logout():
 def dashboard():
     return render_template(
         "app2_dashboard.html",
-        tasks=_get_user_tasks(session.get("user")),
+        portal_title="Amigo Training Portal",
         current_user=session.get("user"),
-        portal_title="Daymark Workboard",
+        courses=COURSES,
     )
-
-
-def _read_task_store():
-    if not TASKS_FILE.exists():
-        return {}
-    store = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
-    if not isinstance(store, dict):
-        raise ValueError("Task store must contain a JSON object")
-    return store
-
-
-def _write_task_store(store):
-    TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    temporary_file = TASKS_FILE.with_suffix(TASKS_FILE.suffix + ".tmp")
-    temporary_file.write_text(json.dumps(store, indent=2), encoding="utf-8")
-    os.chmod(temporary_file, 0o600)
-    temporary_file.replace(TASKS_FILE)
-
-
-def _get_user_tasks(username):
-    with TASKS_LOCK:
-        tasks = _read_task_store().get(username, [])
-    return sorted(tasks, key=lambda task: (task.get("completed", False), task.get("due_date") or "9999-12-31", -task["id"]))
-
-
-def _parse_task_fields(data, existing=None):
-    if not isinstance(data, dict):
-        return None, "Task data must be a JSON object"
-    fields = dict(existing) if existing is not None else {
-        "notes": "",
-        "due_date": "",
-        "priority": "medium",
-        "completed": False,
-    }
-    if "title" in data:
-        title = str(data.get("title", "")).strip()
-        if not title or len(title) > 160:
-            return None, "Title is required and must be at most 160 characters"
-        fields["title"] = title
-    if "notes" in data:
-        notes = str(data.get("notes", "")).strip()
-        if len(notes) > 1000:
-            return None, "Notes must be at most 1000 characters"
-        fields["notes"] = notes
-    if "due_date" in data:
-        due_date = str(data.get("due_date", "")).strip()
-        if due_date:
-            try:
-                date.fromisoformat(due_date)
-            except ValueError:
-                return None, "Due date must use YYYY-MM-DD format"
-        fields["due_date"] = due_date
-    if "priority" in data:
-        priority = data.get("priority")
-        if priority not in ("low", "medium", "high"):
-            return None, "Priority must be low, medium, or high"
-        fields["priority"] = priority
-    if "completed" in data:
-        if not isinstance(data["completed"], bool):
-            return None, "Completed must be true or false"
-        fields["completed"] = data["completed"]
-    return fields, None
-
-
-@app.route("/api/tasks", methods=["POST"])
-@login_required
-def api_create_task():
-    data = request.get_json(silent=True) or {}
-    fields, error = _parse_task_fields(data)
-    if error or "title" not in fields:
-        return jsonify({"ok": False, "error": error or "Title is required"}), 400
-
-    username = session.get("user")
-    with TASKS_LOCK:
-        store = _read_task_store()
-        tasks = store.setdefault(username, [])
-        task = {
-            **fields,
-            "id": max((item["id"] for item in tasks), default=0) + 1,
-            "completed": False,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        tasks.append(task)
-        _write_task_store(store)
-    return jsonify({"ok": True, "task": task}), 201
-
-
-@app.route("/api/tasks/<int:task_id>", methods=["PATCH", "DELETE"])
-@login_required
-def api_task(task_id):
-    username = session.get("user")
-    with TASKS_LOCK:
-        store = _read_task_store()
-        tasks = store.get(username, [])
-        task = next((item for item in tasks if item["id"] == task_id), None)
-        if task is None:
-            return jsonify({"ok": False, "error": "Not found"}), 404
-
-        if request.method == "DELETE":
-            tasks.remove(task)
-            _write_task_store(store)
-            return jsonify({"ok": True})
-
-        data = request.get_json(silent=True) or {}
-        fields, error = _parse_task_fields(data, task)
-        if error:
-            return jsonify({"ok": False, "error": error}), 400
-        task.update(fields)
-        _write_task_store(store)
-    return jsonify({"ok": True, "task": task})
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8003, debug=False)
