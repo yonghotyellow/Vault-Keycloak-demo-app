@@ -146,12 +146,6 @@
     const dbPassword = {{ db_password| tojson }};
     console.log('DB connection info:', { dbUser, dbPassword });
 
-    // Keycloak token (for debugging). This prints the token and id token claims
-    const keycloakToken = {{ keycloak_token|tojson }};
-    // const idTokenClaims = {{ id_token_claims|tojson }};
-    if (keycloakToken) console.log('Keycloak token:', keycloakToken);
-    // if (idTokenClaims) console.log('ID token claims:', idTokenClaims);
-
     let passwordVisible = false;
 
     function togglePassword() {

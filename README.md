@@ -105,13 +105,15 @@ To run the Amigo Training Portal, start `python app2.py` and open `http://localh
 
 For a single-sign-on demo across both apps, use the same Keycloak realm but create a separate OIDC client for each app. Keep the realm/base URL shared, configure `KEYCLOAK_CLIENT_ID` and `KEYCLOAK_CLIENT_SECRET` for `app.py`, and set `APP2_KEYCLOAK_CLIENT_ID=demo-app2` and `APP2_KEYCLOAK_CLIENT_SECRET` for `app2.py`. App2 defaults to the `demo-app2` client ID and does not reuse app.py's client secret. Register `http://localhost:8002/auth/callback` as the valid redirect URI for the app.py client and `http://localhost:8003/auth/callback` for the app2 client. Both clients should use OIDC standard flow and be confidential server-side clients. Sign in to one app, then use Keycloak sign-in in the other without ending the Keycloak session; the existing realm SSO session should authenticate the second app without another password prompt.
 
+Both apps validate the Keycloak session by exchanging its refresh token on each request. If Keycloak has ended the realm/client session, the refresh is rejected and the app session is cleared. A temporary Keycloak/network error returns HTTP 503 rather than silently treating the user as logged out. Refresh tokens are stored in a server-side SQLite file (`.keycloak_tokens.sqlite3` by default); set `KEYCLOAK_TOKEN_STORE` to choose another path. Configure the Keycloak Client Session Idle timeout to control how long the SSO session remains active.
+
 ## Troubleshooting
 
 - If Keycloak token has no `groups` claim, add a Group Membership mapper to the client and re-login users.
 - For TLS errors to Keycloak, either fix the cer
 
 Certificate chain or set `KEYCLOAK_SKIP_VERIFY=true` in env (dev only). For DNS/connectivity issues, ensure `KEYCLOAK_BASE` is reachable from the app host.
-- Session cookie size: storing the whole token in session can grow cookie size; if you hit cookie size issues, switch to storing only minimal claims or keep the debug token out of session.
+- If a Keycloak session expires, the next app request redirects to login. If Keycloak cannot be reached, the app returns HTTP 503 and keeps the session so a transient outage does not force a new login.
 
 ## Tests
 

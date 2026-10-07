@@ -8,6 +8,14 @@ import urllib3
 from urllib.parse import urlencode
 
 import db
+from keycloak_session import (
+    KeycloakTokenStoreError,
+    clear_keycloak_session,
+    load_keycloak_token,
+    refresh_stored_keycloak_session,
+    save_keycloak_token,
+    token_expiry,
+)
 
 app = Flask(__name__)
 app.secret_key = "dev-secret-change-me"
@@ -38,6 +46,46 @@ def _load_env_file():
 
 _load_env_file()
 
+
+@app.before_request
+def clear_expired_keycloak_session():
+    if request.endpoint == "logout":
+        return
+
+    session_id = session.get("keycloak_session_id")
+    if not session.get("logged_in"):
+        return
+
+    if not session_id:
+        if any(session.get(key) is not None for key in ("token", "id_token")):
+            clear_keycloak_session(session)
+        return
+
+    if not all(
+        (KEYCLOAK_BASE, KEYCLOAK_REALM, KEYCLOAK_CLIENT_ID, KEYCLOAK_CLIENT_SECRET)
+    ):
+        clear_keycloak_session(session)
+        return
+
+    token_endpoint = (
+        f"{KEYCLOAK_BASE.rstrip('/')}/realms/{KEYCLOAK_REALM}/"
+        "protocol/openid-connect/token"
+    )
+    try:
+        valid = refresh_stored_keycloak_session(
+            session_id,
+            token_endpoint,
+            KEYCLOAK_CLIENT_ID,
+            KEYCLOAK_CLIENT_SECRET,
+            verify=not KEYCLOAK_SKIP_VERIFY,
+        )
+        if not valid:
+            clear_keycloak_session(session)
+    except (requests.RequestException, ValueError, KeycloakTokenStoreError):
+        app.logger.exception("Unable to validate the Keycloak session")
+        return "Unable to validate the Keycloak session. Please try again.", 503
+
+
 # Local fallback credentials (kept for demo/testing)
 APP_USER = "hieutq"
 APP_PASS = "1"
@@ -48,6 +96,7 @@ KEYCLOAK_REALM = os.getenv("KEYCLOAK_REALM")
 KEYCLOAK_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID")
 KEYCLOAK_CLIENT_SECRET = os.getenv("KEYCLOAK_CLIENT_SECRET")
 KEYCLOAK_SKIP_VERIFY = os.getenv("KEYCLOAK_SKIP_VERIFY", "false").lower() in ("1", "true", "yes")
+server_metadata = {}
 oauth = OAuth(app)
 if KEYCLOAK_CLIENT_ID and KEYCLOAK_CLIENT_SECRET:
     # If skipping TLS verification, fetch metadata manually with verify=False
@@ -111,6 +160,7 @@ def login():
         username = request.form.get("username", "")
         password = request.form.get("password", "")
         if username == APP_USER and password == APP_PASS:
+            clear_keycloak_session(session)
             session["logged_in"] = True
             session["user"] = username
             # grant local fallback user full create/view rights for testing
@@ -132,13 +182,12 @@ def login_keycloak():
 
 @app.route("/auth/callback")
 def auth_callback():
-    token = oauth.keycloak.authorize_access_token()
-    # store raw token for debugging
-    try:
-        session["token"] = token
-    except Exception:
-        # session may reject non-serializable items; fallback to storing id_token
-        session["token"] = {k: v for k, v in (token.items() if isinstance(token, dict) else [])}
+    token = dict(oauth.keycloak.authorize_access_token())
+    clear_keycloak_session(session)
+    expires_at = token_expiry(token)
+    if expires_at is not None:
+        token["expires_at"] = expires_at
+    session["keycloak_session_id"] = save_keycloak_token(token)
 
     # Try to get userinfo and id_token claims; groups may appear in either
     userinfo = {}
@@ -166,11 +215,17 @@ def auth_callback():
 
 @app.route("/logout")
 def logout():
-    id_token = session.get("id_token")
-    session.clear()
+    stored_token = load_keycloak_token(session.get("keycloak_session_id"))
+    id_token = stored_token.get("id_token") if stored_token else None
+    clear_keycloak_session(session)
 
     if KEYCLOAK_CLIENT_ID and KEYCLOAK_CLIENT_SECRET:
         end_session_url = server_metadata.get("end_session_endpoint")
+        if not end_session_url and KEYCLOAK_BASE and KEYCLOAK_REALM:
+            end_session_url = (
+                f"{KEYCLOAK_BASE.rstrip('/')}/realms/{KEYCLOAK_REALM}/"
+                "protocol/openid-connect/logout"
+            )
         if end_session_url:
             params = {
                 "post_logout_redirect_uri": url_for("login", _external=True),
@@ -210,8 +265,6 @@ def dashboard():
         db_user=db_user,
         db_password=db_password,
         db_error=db_error,
-        keycloak_token=session.get("token"),
-        id_token_claims=session.get("id_token_claims"),
         groups=session.get("groups", []) or [],
     )
 

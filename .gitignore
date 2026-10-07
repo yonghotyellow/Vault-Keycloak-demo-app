@@ -7,3 +7,6 @@ __pycache__/
 .encryption.key
 .env
 .vault.env
+.keycloak_tokens.sqlite3
+.keycloak_tokens.sqlite3-shm
+.keycloak_tokens.sqlite3-wal

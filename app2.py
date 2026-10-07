@@ -7,6 +7,14 @@ from authlib.integrations.flask_client import OAuth
 from flask import Flask, abort, redirect, render_template, request, session, url_for
 import requests
 import urllib3
+from keycloak_session import (
+    KeycloakTokenStoreError,
+    clear_keycloak_session,
+    load_keycloak_token,
+    refresh_stored_keycloak_session,
+    save_keycloak_token,
+    token_expiry,
+)
 
 app = Flask(__name__)
 app.secret_key = os.getenv("APP2_SECRET_KEY", "dev-secret-change-me-app2")
@@ -32,6 +40,46 @@ def _load_env_file():
 
 
 _load_env_file()
+
+
+@app.before_request
+def clear_expired_keycloak_session():
+    if request.endpoint == "logout":
+        return
+
+    session_id = session.get("keycloak_session_id")
+    if not session.get("logged_in"):
+        return
+
+    if not session_id:
+        if any(session.get(key) is not None for key in ("token", "id_token")):
+            clear_keycloak_session(session)
+        return
+
+    if not all(
+        (KEYCLOAK_BASE, KEYCLOAK_REALM, KEYCLOAK_CLIENT_ID, KEYCLOAK_CLIENT_SECRET)
+    ):
+        clear_keycloak_session(session)
+        return
+
+    token_endpoint = (
+        f"{KEYCLOAK_BASE.rstrip('/')}/realms/{KEYCLOAK_REALM}/"
+        "protocol/openid-connect/token"
+    )
+    try:
+        valid = refresh_stored_keycloak_session(
+            session_id,
+            token_endpoint,
+            KEYCLOAK_CLIENT_ID,
+            KEYCLOAK_CLIENT_SECRET,
+            verify=not KEYCLOAK_SKIP_VERIFY,
+        )
+        if not valid:
+            clear_keycloak_session(session)
+    except (requests.RequestException, ValueError, KeycloakTokenStoreError):
+        app.logger.exception("Unable to validate the Keycloak session")
+        return "Unable to validate the Keycloak session. Please try again.", 503
+
 
 # Local fallback credentials. Replace these before exposing this app.
 APP_USER = "hieutq"
@@ -109,7 +157,7 @@ def login():
         username = request.form.get("username", "")
         password = request.form.get("password", "")
         if username == APP_USER and password == APP_PASS:
-            session.clear()
+            clear_keycloak_session(session)
             session["logged_in"] = True
             session["user"] = username
             return redirect(url_for("dashboard"))
@@ -139,13 +187,18 @@ def login_keycloak():
 
 @app.route("/auth/callback")
 def auth_callback():
-    token = oauth.keycloak.authorize_access_token()
+    token = dict(oauth.keycloak.authorize_access_token())
+    clear_keycloak_session(session)
+    expires_at = token_expiry(token)
+    if expires_at is not None:
+        token["expires_at"] = expires_at
     try:
         userinfo = oauth.keycloak.userinfo(token=token) or {}
     except Exception:
         userinfo = {}
 
-    session.clear()
+    keycloak_session_id = save_keycloak_token(token)
+    session["keycloak_session_id"] = keycloak_session_id
     session["logged_in"] = True
     session["user"] = (
         userinfo.get("preferred_username")
@@ -153,15 +206,20 @@ def auth_callback():
         or userinfo.get("sub")
         or "keycloak-user"
     )
-    session["id_token"] = token.get("id_token") if isinstance(token, dict) else None
     return redirect(url_for("dashboard"))
 
 
 @app.route("/logout")
 def logout():
-    id_token = session.get("id_token")
-    session.clear()
+    stored_token = load_keycloak_token(session.get("keycloak_session_id"))
+    id_token = stored_token.get("id_token") if stored_token else None
+    clear_keycloak_session(session)
     end_session_url = server_metadata.get("end_session_endpoint")
+    if not end_session_url and KEYCLOAK_BASE and KEYCLOAK_REALM:
+        end_session_url = (
+            f"{KEYCLOAK_BASE.rstrip('/')}/realms/{KEYCLOAK_REALM}/"
+            "protocol/openid-connect/logout"
+        )
     if end_session_url:
         params = {
             "post_logout_redirect_uri": url_for("login", _external=True),
